@@ -59,9 +59,11 @@ if (window.hljs && document.readyState && document.readyState === "complete") {
 </div>
 
 
-<pre class="r"><code>library(dplyr)
-
-if (!file.exists('pml-training.csv')) {
+<p>In the report, we develop a prediction model for classifying the quality of a specific exercise (barbell lifts) from data from accelerometers worn by the participants. Six participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The data consists of accelerometer readings from accelerometers on the belt, forearm, arm, and dumbell. The data used was derived from data available at <a href="http://groupware.les.inf.puc-rio.br/har">http://groupware.les.inf.puc-rio.br/har</a> (see the section on the Weight Lifting Exercise Dataset).</p>
+<div id="loading-and-preprocessing-the-data" class="section level1">
+<h1>Loading and preprocessing the data</h1>
+<p>We start by downloading and reading in the training and testing datasets. We discard the first five columns, as these contain a unnecessary row identifier and timestamps. We discard the timestamp data because we are interested in predition solely from the accelerometer samples. We also coerce the variables into numeric type for consistency between training and testing sets.</p>
+<pre class="r"><code>if (!file.exists('pml-training.csv')) {
     download.file('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv',
                   destfile='pml-training.csv',
                   method='curl')
@@ -73,8 +75,117 @@ if (!file.exists('pml-testing.csv')) {
                   method='curl')
 }
 
-training &lt;- read.csv('pml-training.csv', header=TRUE)
-testing &lt;- read.csv('pml-testing.csv', header=TRUE)</code></pre>
+training &lt;- read.csv('pml-training.csv', header=TRUE)[,-(1:5)]
+testing &lt;- read.csv('pml-testing.csv', header=TRUE)[,-(1:5)]
+toNumeric &lt;- function(x) { y = as.numeric(x); y[is.na(y)] &lt;- mean(y); y }
+training[,1:154] &lt;- sapply(training[,1:154], toNumeric)
+testing[,1:154] &lt;- sapply(testing[,1:154], toNumeric)</code></pre>
+<p>Next, we remove any predictors with zero or near zero variance.</p>
+<pre class="r"><code>library(caret)
+keepVars &lt;- setdiff(1:154, nearZeroVar(training[,-155]))</code></pre>
+</div>
+<div id="model-fitting" class="section level1">
+<h1>Model fitting</h1>
+<p>We fit a decission tree model using 10-fold cross validation and estimate the out-of-sample error.</p>
+<pre class="r"><code>set.seed(12345)
+trControl &lt;- trainControl(method='cv', number=10)
+model &lt;- train(y=training$classe, x=as.data.frame(training[,keepVars]),
+               trControl=trControl,
+               method='rpart')
+cf &lt;- confusionMatrix(predict(model, training[,keepVars]), training$classe)</code></pre>
+<p>First, we will examine the overall accuracy of the model.</p>
+<pre class="r"><code>library(knitr)
+kable(cf$overall)</code></pre>
+<table>
+<tbody>
+<tr class="odd">
+<td align="left">Accuracy</td>
+<td align="right">0.4955662</td>
+</tr>
+<tr class="even">
+<td align="left">Kappa</td>
+<td align="right">0.3406638</td>
+</tr>
+<tr class="odd">
+<td align="left">AccuracyLower</td>
+<td align="right">0.4885461</td>
+</tr>
+<tr class="even">
+<td align="left">AccuracyUpper</td>
+<td align="right">0.5025876</td>
+</tr>
+<tr class="odd">
+<td align="left">AccuracyNull</td>
+<td align="right">0.2843747</td>
+</tr>
+<tr class="even">
+<td align="left">AccuracyPValue</td>
+<td align="right">0.0000000</td>
+</tr>
+<tr class="odd">
+<td align="left">McnemarPValue</td>
+<td align="right">NaN</td>
+</tr>
+</tbody>
+</table>
+<p>The accuracy of the model is better than chance, but not very high. Next we’ll look at the accuracy by class.</p>
+<pre class="r"><code>kable(cf$table)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left"></th>
+<th align="right">A</th>
+<th align="right">B</th>
+<th align="right">C</th>
+<th align="right">D</th>
+<th align="right">E</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">A</td>
+<td align="right">5080</td>
+<td align="right">1581</td>
+<td align="right">1587</td>
+<td align="right">1449</td>
+<td align="right">524</td>
+</tr>
+<tr class="even">
+<td align="left">B</td>
+<td align="right">81</td>
+<td align="right">1286</td>
+<td align="right">108</td>
+<td align="right">568</td>
+<td align="right">486</td>
+</tr>
+<tr class="odd">
+<td align="left">C</td>
+<td align="right">405</td>
+<td align="right">930</td>
+<td align="right">1727</td>
+<td align="right">1199</td>
+<td align="right">966</td>
+</tr>
+<tr class="even">
+<td align="left">D</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">0</td>
+</tr>
+<tr class="odd">
+<td align="left">E</td>
+<td align="right">14</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">1631</td>
+</tr>
+</tbody>
+</table>
+<p>It appears that the model cannot discriminate class D. This could explain the low accuracy of the model.</p>
+</div>
 
 
 </div>
