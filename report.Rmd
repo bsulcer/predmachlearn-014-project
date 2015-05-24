@@ -4,10 +4,23 @@ author: "Brian Sulcer"
 date: "May 24, 2015"
 output: html_document
 ---
+In the report, we develop a prediction model for classifying the quality of
+a specific exercise (barbell lifts) from data from accelerometers worn by the
+participants.  Six participants were asked to perform barbell lifts correctly and
+incorrectly in 5 different ways.  The data consists of accelerometer readings
+from accelerometers on the belt, forearm, arm, and dumbell.  The data used was
+derived from data available at http://groupware.les.inf.puc-rio.br/har (see the
+section on the Weight Lifting Exercise Dataset). 
+
+# Loading and preprocessing the data
+
+We start by downloading and reading in the training and testing datasets.  We
+discard the first five columns, as these contain a unnecessary row identifier
+and timestamps.  We discard the timestamp data because we are interested in
+predition solely from the accelerometer samples.  We also coerce the variables
+into numeric type for consistency between training and testing sets.
 
 ```{r warning=FALSE, message=FALSE}
-library(dplyr)
-
 if (!file.exists('pml-training.csv')) {
     download.file('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv',
                   destfile='pml-training.csv',
@@ -20,6 +33,58 @@ if (!file.exists('pml-testing.csv')) {
                   method='curl')
 }
 
-training <- read.csv('pml-training.csv', header=TRUE)
-testing <- read.csv('pml-testing.csv', header=TRUE)
+training <- read.csv('pml-training.csv', header=TRUE)[,-(1:5)]
+testing <- read.csv('pml-testing.csv', header=TRUE)[,-(1:5)]
+toNumeric <- function(x) { y = as.numeric(x); y[is.na(y)] <- mean(y); y }
+training[,1:154] <- sapply(training[,1:154], toNumeric)
+testing[,1:154] <- sapply(testing[,1:154], toNumeric)
+```
+
+Next, we remove any predictors with zero or near zero variance.
+
+```{r warning=FALSE, message=FALSE}
+library(caret)
+keepVars <- setdiff(1:154, nearZeroVar(training[,-155]))
+```
+
+# Model fitting
+
+We fit a decission tree model using 10-fold cross validation and estimate the
+out-of-sample error.
+
+```{r warning=FALSE, message=FALSE, cache=TRUE}
+set.seed(12345)
+trControl <- trainControl(method='cv', number=10)
+model <- train(y=training$classe, x=as.data.frame(training[,keepVars]),
+               trControl=trControl,
+               method='rpart')
+cf <- confusionMatrix(predict(model, training[,keepVars]), training$classe)
+```
+
+First, we will examine the overall accuracy of the model.
+
+```{r}
+library(knitr)
+kable(cf$overall)
+```
+
+The accuracy of the model is better than chance, but not very high.  Next we'll
+look at the accuracy by class.
+
+```{r}
+kable(cf$table)
+```
+
+It appears that the model cannot discriminate class D.  This could explain
+the low accuracy of the model.
+
+```{r echo=FALSE, eval=FALSE}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(predict(model, newdata=testing[,keepVars]))
 ```
